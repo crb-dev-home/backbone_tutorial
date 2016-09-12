@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.3.2/css/bootstrap.min.css" />-->
+  <link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/css/bootstrap.css">
+  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/t/dt/dt-1.10.11/datatables.min.css" />
+
+  
+</head>
+<body>
+
+  <div class="container" id="container">
+    <button type="button" rv-on-click="view.add">Add</button>
+    <button type="button" rv-on-click="view.remove">Remove</button>
+    <button type="button" rv-on-click="view.reset">Reset</button>
+
+    <table id="example" class="display" cellspacing="0">
+      <thead>
+        <tr>
+          <td>Id</td>
+          <td>Name</td>
+          <td>Date</td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr rv-datatable-item="data.models">
+          <td>{ item:id }</td>
+          <td>{ item:name }</td>
+          <td>{ item:date | fullDate }</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+ <script type="text/javascript" src="bower_components/jquery/dist/jquery.js"></script>
+    <script type="text/javascript" src="bower_components/bootstrap/dist/js/bootstrap.js"></script>
+    <script type="text/javascript" src="bower_components/underscore/underscore.js"></script>
+    <script type="text/javascript" src="bower_components/backbone/backbone.js"></script>
+     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/rivets/0.8.1/rivets.bundled.min.js"></script>
+  <script type="text/javascript" src="https://cdn.datatables.net/t/dt/dt-1.10.11/datatables.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.13.0/moment.min.js"></script>
+
+  <script type="text/javascript">
+    $(document).ready(function () {
+
+      rivets.configure({
+        // Preload templates with initial data on bind
+        preloadData: true,
+
+        // Attribute prefix in templates
+        prefix: "rv"
+      });
+
+      //rivets:  adapter to backbone models
+      rivets.adapters[":"] = {
+        observe: function (obj, keypath, callback) {
+          obj.on('change:' + keypath, callback);
+
+        },
+        unobserve: function (obj, keypath, callback) {
+          obj.off('change:' + keypath, callback);
+        },
+        get: function (obj, keypath) {
+          return obj.get(keypath);
+        },
+        set: function (obj, keypath, value) {
+          obj.set(keypath, value);
+        }
+      };
+
+      //rivets:  binder to use datatable with backbone
+      //base on rivets binder["each-*"]
+      rivets.binders["datatable-*"] = {
+        block: true,
+        priority: 4000,
+        bind: function (el) {
+
+          //check jquery datatable plugin
+          if (jQuery.fn.DataTable === "undefined") {
+            throw new Error("No datatable plug-in available");
+          }
+
+          var attr, view, _i, _len, _ref1;
+          if (this.marker == null) {
+            attr = [this.view.prefix, this.type].join('-').replace('--', '-');
+            this.marker = document.createComment(" rivets: " + this.type + " ");
+            this.iterated = [];
+            el.removeAttribute(attr);
+            el.parentNode.insertBefore(this.marker, el);
+            el.parentNode.removeChild(el);
+
+            //check table element
+            var table = jQuery(this.marker).closest("table");
+            if (table.length === 0) {
+              throw new Error("No table element.");
+            }
+
+          } else {
+            _ref1 = this.iterated;
+            for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+              view = _ref1[_i];
+              view.bind();
+            }
+          }
+        },
+        unbind: function (el) {
+          var view, _i, _len, _ref1, _results;
+          if (this.iterated != null) {
+            _ref1 = this.iterated;
+            _results = [];
+            for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+              view = _ref1[_i];
+              _results.push(view.unbind());
+            }
+            return _results;
+          }
+        },
+        routine: function (el, collection) {
+          var binding, data, i, index, key, model, modelName, options, previous, template, view, _i, _j, _k, _len, _len1, _len2, _ref1, _ref2, _ref3, _results;
+          modelName = this.args[0];
+          collection = collection || [];
+
+          var dt = jQuery(this.marker).closest("table").DataTable();
+
+          if (this.iterated.length > collection.length) {
+            _ref1 = Array(this.iterated.length - collection.length);
+            for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+              i = _ref1[_i];
+              //unbind model
+              view = this.iterated.pop();
+              view.unbind();
+
+              //remove element from datatable
+              //https://datatables.net/reference/api/row().remove()
+              dt.row(view.els[0]).remove().draw();
+            }
+          }
+          for (index = _j = 0, _len1 = collection.length; _j < _len1; index = ++_j) {
+            model = collection[index];
+            data = {
+              index: index
+            };
+            data[modelName] = model;
+            if (this.iterated[index] == null) {
+              _ref2 = this.view.models;
+              for (key in _ref2) {
+                model = _ref2[key];
+                if (data[key] == null) {
+                  data[key] = model;
+                }
+              }
+              previous = this.iterated.length ? this.iterated[this.iterated.length - 1].els[0] : this.marker;
+              options = this.view.options();
+              options.preloadData = true;
+              template = el.cloneNode(true);
+              view = new rivets._.View(template, data, options);
+              //bind model
+              view.bind();
+              this.iterated.push(view);
+
+              //add element to datatable
+              //https://datatables.net/examples/api/add_row.html
+              dt.row.add(template).draw();
+
+            } else if (this.iterated[index].models[modelName] !== model) {
+              this.iterated[index].update(data);
+            }
+          }
+          if (el.nodeName === 'OPTION') {
+            _ref3 = this.view.bindings;
+            _results = [];
+            for (_k = 0, _len2 = _ref3.length; _k < _len2; _k++) {
+              binding = _ref3[_k];
+              if (binding.el === this.marker.parentNode && binding.type === 'value') {
+                _results.push(binding.sync());
+              } else {
+                _results.push(void 0);
+              }
+            }
+            return _results;
+          }
+        },
+        update: function (models) {
+          var data, key, model, view, _i, _len, _ref1, _results;
+          data = {};
+          for (key in models) {
+            model = models[key];
+            if (key !== this.args[0]) {
+              data[key] = model;
+            }
+          }
+          _ref1 = this.iterated;
+          _results = [];
+          for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+            view = _ref1[_i];
+            _results.push(view.update(data));
+          }
+          return _results;
+        }
+      };
+
+      //rivets: datatime formatter
+      rivets.formatters.fullDate = function (value) {
+        if (!value) {
+          return value;
+        }
+
+        return moment(value).format("dddd, MMMM  D YYYY, h:mm a");
+      };
+
+      //backbone madel and collection
+      var Model = Backbone.Model.extend();
+      var Collection = Backbone.Collection.extend({ model: Model });
+
+      var collection = new Collection();
+
+      var i = 1;
+
+      //fill bacckbone collection to example
+      collection.add([
+      { id: i, name: "row: " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) },
+      { id: i, name: "row:  " + i, date: new Date().setMinutes(i++) }]);
+
+      //bind rivets.js
+      rivets.bind($("#container"), {
+        data: collection,
+        view: this
+      });
+
+      //initialize datatable
+      $('#example').DataTable();
+
+      //add new bakcbone model
+      this.add = function () {
+        collection.push({ id: i, name: "row: " + i, date: new Date().setMinutes(i++) });
+      };
+
+      //remove index-0 bakcbone model
+      this.remove = function () {
+        collection.remove(collection.at(0));
+      };
+
+      //reset backbone collection
+      this.reset = function () {
+        collection.reset();
+        i = 1;
+      };
+
+    });
+  </script>
+  
+   <!-- <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.3.2/js/bootstrap.min.js"></script>
+
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.2/backbone.js"></script>
+
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/rivets/0.8.1/rivets.bundled.min.js"></script>
+  <script type="text/javascript" src="https://cdn.datatables.net/t/dt/dt-1.10.11/datatables.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.13.0/moment.min.js"></script>
+-->
+
+</body>
+</html>
